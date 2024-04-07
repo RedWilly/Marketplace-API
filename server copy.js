@@ -4,16 +4,7 @@ const cors = require('cors');
 const express = require('express');
 const mongoose = require('mongoose');
 const Web3 = require('web3');
-
-const {
-    setupTokenListedListener,
-    setupTokenDelistedListener,
-    setupTokenBoughtListener,
-    setupTokenBidEnteredListener,
-    setupTokenBidWithdrawnListener,
-    setupTokenBidAcceptedListener
-} = require('./listeners');
-
+const { setupTokenListedListener, setupTokenDelistedListener, setupTokenBoughtListener, setupTokenBidEnteredListener, setupTokenBidWithdrawnListener, setupTokenBidAcceptedListener } = require('./listeners');
 const CollectionStat = require('./models/CollectionStat');
 const Listing = require('./models/Listing');
 const Sale = require('./models/Sale')
@@ -21,8 +12,6 @@ const Bid = require('./models/Bid')
 
 
 const marketplaceABI = require('./ABI/marketplaceABI.json');
-const marketplaceContractAddress = process.env.MARKETPLACE_CONTRACT_ADDRESS;
-
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -39,41 +28,9 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error(err));
 
-//Stable Websocket Connections - reconnect
-const provider = new Web3.providers.WebsocketProvider(process.env.INFURA_PROJECT_ID, {
-    reconnect: {
-        auto: true,
-        delay: 5000,
-        maxAttempts: 5,
-        onTimeout: false
-    }
-});
-const web3 = new Web3(provider);
+const web3 = new Web3(new Web3.providers.WebsocketProvider(process.env.INFURA_PROJECT_ID));
+const marketplaceContract = new web3.eth.Contract(marketplaceABI, process.env.MARKETPLACE_CONTRACT_ADDRESS);
 
-//
-function setupEventListeners() {
-    const marketplaceContract = new web3.eth.Contract(marketplaceABI, process.env.MARKETPLACE_CONTRACT_ADDRESS);
-
-    setupTokenListedListener(marketplaceContract);
-    setupTokenDelistedListener(marketplaceContract);
-    setupTokenBoughtListener(marketplaceContract);
-    setupTokenBidEnteredListener(marketplaceContract);
-    setupTokenBidWithdrawnListener(marketplaceContract);
-    setupTokenBidAcceptedListener(marketplaceContract);
-}
-
-
-// WebSocket provider event handlers
-provider.on('connect', function () {
-    console.log('WS Connected');
-    setupEventListeners(); // Call setupEventListeners on WebSocket connect
-});
-
-provider.on('error', e => console.error('WS Error', e));
-provider.on('end', e => console.log('WS End', e));
-
-
-//express routes ( ALL OVER RIDE )
 app.get('/', (req, res) => {
     res.send('Marketplace Monitor Running');
 });
@@ -289,5 +246,10 @@ app.get('/api/bids/:erc721Address/:tokenId/active', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    setupEventListeners();
+    setupTokenListedListener(marketplaceContract);
+    setupTokenDelistedListener(marketplaceContract);
+    setupTokenBoughtListener(marketplaceContract);
+    setupTokenBidEnteredListener(marketplaceContract);
+    setupTokenBidWithdrawnListener(marketplaceContract);
+    setupTokenBidAcceptedListener(marketplaceContract);
 });
