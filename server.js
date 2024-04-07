@@ -12,7 +12,7 @@ const {
     setupTokenBidEnteredListener,
     setupTokenBidWithdrawnListener,
     setupTokenBidAcceptedListener
-} = require('./listeners');
+} = require('./Listeners');
 
 const CollectionStat = require('./models/CollectionStat');
 const Listing = require('./models/Listing');
@@ -43,7 +43,7 @@ mongoose.connect(process.env.MONGODB_URI)
 const provider = new Web3.providers.WebsocketProvider(process.env.INFURA_PROJECT_ID, {
     reconnect: {
         auto: true,
-        delay: 5000,
+        delay: 2500,
         maxAttempts: 5,
         onTimeout: false
     }
@@ -52,7 +52,7 @@ const web3 = new Web3(provider);
 
 //
 function setupEventListeners() {
-    const marketplaceContract = new web3.eth.Contract(marketplaceABI, process.env.MARKETPLACE_CONTRACT_ADDRESS);
+    const marketplaceContract = new web3.eth.Contract(marketplaceABI, marketplaceContractAddress);
 
     setupTokenListedListener(marketplaceContract);
     setupTokenDelistedListener(marketplaceContract);

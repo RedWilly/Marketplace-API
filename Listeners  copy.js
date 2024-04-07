@@ -3,14 +3,63 @@ const Sale = require('./models/Sale');
 const Bid = require('./models/Bid');
 const CollectionStat = require('./models/CollectionStat')
 
+const fs = require('fs');
+const path = require('path');
+
+//dont miss any event
+const LAST_BLOCK_FILE = path.join(__dirname, 'lastBlock.txt');
+const eventProcessingTracker = {}; // { blockNumber: numberOfEventsProcessed }
+let lowestPendingBlock = null;
+
+function saveLastProcessedBlock(blockNumber) {
+    fs.writeFileSync(LAST_BLOCK_FILE, blockNumber.toString());
+}
+
+function getLastProcessedBlock() {
+    if (!fs.existsSync(LAST_BLOCK_FILE)) {
+        return 'latest';
+    }
+    const blockNumber = fs.readFileSync(LAST_BLOCK_FILE, 'utf8');
+    return parseInt(blockNumber) + 1;
+}
+
+function recordEventProcessingStart(blockNumber) {
+    if (!eventProcessingTracker[blockNumber]) {
+        eventProcessingTracker[blockNumber] = 1;
+    } else {
+        eventProcessingTracker[blockNumber]++;
+    }
+    if (lowestPendingBlock === null || blockNumber < lowestPendingBlock) {
+        lowestPendingBlock = blockNumber;
+    }
+}
+
+function recordEventProcessingComplete(blockNumber) {
+    eventProcessingTracker[blockNumber]--;
+
+    // --checking if all events for the lowest pending block have been processed
+    if (eventProcessingTracker[lowestPendingBlock] === 0) {
+        saveLastProcessedBlock(lowestPendingBlock);
+        delete eventProcessingTracker[lowestPendingBlock]; // Clean up
+
+        // pdateing the lowest pending block
+        const pendingBlocks = Object.keys(eventProcessingTracker).map(Number).sort((a, b) => a - b);
+        lowestPendingBlock = pendingBlocks.length > 0 ? pendingBlocks[0] : null;
+    }
+}
+
 function setupTokenListedListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenListed({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, async (error, event) => {
         if (error) {
             console.error('TokenListed Error:', error);
         } else {
             console.log('TokenListed Event:', event);
+            recordEventProcessingStart(event.blockNumber);
+
             // Create a new listing document in MongoDB
             const newListing = new Listing({
                 erc721Address: event.returnValues.erc721Address,
@@ -18,40 +67,51 @@ function setupTokenListedListener(contract) {
                 seller: event.returnValues.listing.seller,
                 price: event.returnValues.listing.value,
                 expireTimestamp: event.returnValues.listing.expireTimestamp,
-                listedTimestamp: Date.now(), // This is just an example
+                listedTimestamp: Date.now(),
                 status: 'Active',
             });
             newListing.save().then(() => console.log('New listing saved.'));
+            console.log(`Updating floor price for address: ${event.returnValues.erc721Address}`);
             await updateFloorPrice(event.returnValues.erc721Address);
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
 
 function setupTokenDelistedListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenDelisted({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, (error, event) => {
         if (error) {
             console.error('TokenDelisted Error:', error);
         } else {
             console.log('TokenDelisted Event:', event);
+            recordEventProcessingStart(event.blockNumber);
+
             // Remove the listing info from MongoDB
             Listing.deleteOne({
                 tokenId: event.returnValues.tokenId.toString(),
                 erc721Address: event.returnValues.erc721Address,
             }).then(() => console.log('Listing removed.'));
+
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
 
 function setupTokenBoughtListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenBought({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, async (error, event) => {
         if (error) {
             console.error('TokenBought Error:', error);
         } else {
             console.log('TokenBought Event:', event);
+            recordEventProcessingStart(event.blockNumber);
             // Create a new sale document and remove the listing from MongoDB
             const newSale = new Sale({
                 erc721Address: event.returnValues.erc721Address,
@@ -85,6 +145,7 @@ function setupTokenBoughtListener(contract) {
             // Update totalVolumeTraded and floor price for the collection
             await updateTotalVolumeTraded(event.returnValues.erc721Address, event.returnValues.listing.value);
             await updateFloorPrice(event.returnValues.erc721Address);
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
@@ -92,13 +153,16 @@ function setupTokenBoughtListener(contract) {
 
 
 function setupTokenBidEnteredListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenBidEntered({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, (error, event) => {
         if (error) {
             console.error('TokenBidEntered Error:', error);
         } else {
             console.log('TokenBidEntered Event:', event);
+            recordEventProcessingStart(event.blockNumber);
             // Create a new bid document in MongoDB
             const newBid = new Bid({
                 erc721Address: event.returnValues.erc721Address,
@@ -109,36 +173,44 @@ function setupTokenBidEnteredListener(contract) {
                 status: 'Active',
             });
             newBid.save().then(() => console.log('New bid saved.'));
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
 
 function setupTokenBidWithdrawnListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenBidWithdrawn({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, (error, event) => {
         if (error) {
             console.error('TokenBidWithdrawn Error:', error);
         } else {
             console.log('TokenBidWithdrawn Event:', event);
+            recordEventProcessingStart(event.blockNumber);
             // Example: Remove the bid document from MongoDB
             Bid.deleteOne({
                 tokenId: event.returnValues.bid.tokenId.toString(),
                 bidder: event.returnValues.bid.bidder,
                 erc721Address: event.returnValues.erc721Address,
             }).then(() => console.log('Bid removed.'));
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
 
 function setupTokenBidAcceptedListener(contract) {
+    const fromBlock = getLastProcessedBlock();
+
     contract.events.TokenBidAccepted({
-        fromBlock: 'latest'
+        fromBlock: fromBlock
     }, async (error, event) => {
         if (error) {
             console.error('TokenBidAccepted Error:', error);
         } else {
             console.log('TokenBidAccepted Event:', event);
+            recordEventProcessingStart(event.blockNumber);
             // Find and delete only the accepted bid for this token
             await Bid.findOneAndDelete({
                 tokenId: event.returnValues.tokenId.toString(),
@@ -174,6 +246,7 @@ function setupTokenBidAcceptedListener(contract) {
 
             await updateTotalVolumeTradedWETH(event.returnValues.erc721Address, event.returnValues.bid.value);
             //await updateFloorPrice(event.returnValues.erc721Address);
+            recordEventProcessingComplete(event.blockNumber);
         }
     });
 }
