@@ -6,6 +6,11 @@ const { ethers } = require('ethers');
 
 const { initEventPolling } = require('./Listeners');
 
+const CollectionStat = require('./models/CollectionStat');
+const Listing = require('./models/Listing');
+const Sale = require('./models/Sale')
+const Bid = require('./models/Bid')
+
 const marketplaceABI = require('./ABI/marketplaceABI.json');
 
 const app = express();
