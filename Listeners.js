@@ -1,183 +1,10 @@
+const { ethers } = require('ethers');
 const Listing = require('./models/Listing');
 const Sale = require('./models/Sale');
 const Bid = require('./models/Bid');
 const CollectionStat = require('./models/CollectionStat')
 
-function setupTokenListedListener(contract) {
-    contract.events.TokenListed({
-        fromBlock: 'latest'
-    }, async (error, event) => {
-        if (error) {
-            console.error('TokenListed Error:', error);
-        } else {
-            console.log('TokenListed Event:', event);
-            // Create a new listing document in MongoDB
-            const newListing = new Listing({
-                erc721Address: event.returnValues.erc721Address,
-                tokenId: event.returnValues.tokenId.toString(),
-                seller: event.returnValues.listing.seller,
-                price: event.returnValues.listing.value,
-                expireTimestamp: event.returnValues.listing.expireTimestamp,
-                listedTimestamp: Date.now(), // This is just an example
-                status: 'Active',
-            });
-            newListing.save().then(() => console.log('New listing saved.'));
-            await updateFloorPrice(event.returnValues.erc721Address);
-        }
-    });
-}
-
-function setupTokenDelistedListener(contract) {
-    contract.events.TokenDelisted({
-        fromBlock: 'latest'
-    }, (error, event) => {
-        if (error) {
-            console.error('TokenDelisted Error:', error);
-        } else {
-            console.log('TokenDelisted Event:', event);
-            // Remove the listing info from MongoDB
-            Listing.deleteOne({
-                tokenId: event.returnValues.tokenId.toString(),
-                erc721Address: event.returnValues.erc721Address,
-            }).then(() => console.log('Listing removed.'));
-        }
-    });
-}
-
-function setupTokenBoughtListener(contract) {
-    contract.events.TokenBought({
-        fromBlock: 'latest'
-    }, async (error, event) => {
-        if (error) {
-            console.error('TokenBought Error:', error);
-        } else {
-            console.log('TokenBought Event:', event);
-            // Create a new sale document and remove the listing from MongoDB
-            const newSale = new Sale({
-                erc721Address: event.returnValues.erc721Address,
-                tokenId: event.returnValues.tokenId.toString(),
-                buyer: event.returnValues.buyer,
-                seller: event.returnValues.listing.seller,
-                price: event.returnValues.listing.value,
-                serviceFee: event.returnValues.serviceFee,
-                royaltyFee: event.returnValues.royaltyFee,
-                timestamp: Date.now(),
-                status: 'Sold',
-                txid: event.transactionHash,
-            });
-
-            // Save the new sale
-            await newSale.save();
-            console.log('New sale saved.');
-
-            // Attempt to find and delete the listing associated with the tokenId and erc721Address
-            const deletedListing = await Listing.findOneAndDelete({
-                tokenId: event.returnValues.tokenId.toString(),
-                erc721Address: event.returnValues.erc721Address
-            });
-
-            if (deletedListing) {
-                console.log(`Listing for tokenId ${event.returnValues.tokenId.toString()} removed.`);
-            } else {
-                console.error(`Listing for tokenId ${event.returnValues.tokenId.toString()} not found or already removed.`);
-            }
-
-            // Update totalVolumeTraded and floor price for the collection
-            await updateTotalVolumeTraded(event.returnValues.erc721Address, event.returnValues.listing.value);
-            await updateFloorPrice(event.returnValues.erc721Address);
-        }
-    });
-}
-
-
-
-function setupTokenBidEnteredListener(contract) {
-    contract.events.TokenBidEntered({
-        fromBlock: 'latest'
-    }, (error, event) => {
-        if (error) {
-            console.error('TokenBidEntered Error:', error);
-        } else {
-            console.log('TokenBidEntered Event:', event);
-            // Create a new bid document in MongoDB
-            const newBid = new Bid({
-                erc721Address: event.returnValues.erc721Address,
-                tokenId: event.returnValues.bid.tokenId.toString(),
-                bidder: event.returnValues.bid.bidder,
-                value: event.returnValues.bid.value,
-                expireTimestamp: event.returnValues.bid.expireTimestamp,
-                status: 'Active',
-            });
-            newBid.save().then(() => console.log('New bid saved.'));
-        }
-    });
-}
-
-function setupTokenBidWithdrawnListener(contract) {
-    contract.events.TokenBidWithdrawn({
-        fromBlock: 'latest'
-    }, (error, event) => {
-        if (error) {
-            console.error('TokenBidWithdrawn Error:', error);
-        } else {
-            console.log('TokenBidWithdrawn Event:', event);
-            // Example: Remove the bid document from MongoDB
-            Bid.deleteOne({
-                tokenId: event.returnValues.bid.tokenId.toString(),
-                bidder: event.returnValues.bid.bidder,
-                erc721Address: event.returnValues.erc721Address,
-            }).then(() => console.log('Bid removed.'));
-        }
-    });
-}
-
-function setupTokenBidAcceptedListener(contract) {
-    contract.events.TokenBidAccepted({
-        fromBlock: 'latest'
-    }, async (error, event) => {
-        if (error) {
-            console.error('TokenBidAccepted Error:', error);
-        } else {
-            console.log('TokenBidAccepted Event:', event);
-            // Find and delete only the accepted bid for this token
-            await Bid.findOneAndDelete({
-                tokenId: event.returnValues.tokenId.toString(),
-                bidder: event.returnValues.bid.bidder,
-                erc721Address: event.returnValues.erc721Address,
-            });
-
-            // Check if there's a listing to remove, indicating the item was listed before being sold.
-            const listing = await Listing.findOneAndDelete({
-                tokenId: event.returnValues.tokenId.toString(),
-                erc721Address: event.returnValues.erc721Address,
-            });
-            if (listing) {
-                console.log(`Listing removed for tokenId: ${event.returnValues.tokenId.toString()}`);
-            }
-
-            // Regardless of whether it was listed or not, create a sale entry.
-            const newSale = new Sale({
-                erc721Address: event.returnValues.erc721Address,
-                tokenId: event.returnValues.tokenId.toString(),
-                buyer: event.returnValues.bid.bidder, // Buyer is the bidder whose bid was accepted
-                seller: event.returnValues.seller, // Seller is who accepted the bid, directly from event data
-                price: event.returnValues.bid.value,
-                serviceFee: event.returnValues.serviceFee,
-                royaltyFee: event.returnValues.royaltyFee,
-                timestamp: Date.now(),
-                status: 'Sold',
-                txid: event.transactionHash,
-            });
-            newSale.save()
-                .then(() => console.log('New sale saved.'))
-                .catch((saveError) => console.error('Error saving new sale:', saveError));
-
-            await updateTotalVolumeTradedWETH(event.returnValues.erc721Address, event.returnValues.bid.value);
-            //await updateFloorPrice(event.returnValues.erc721Address);
-        }
-    });
-}
-
+// Placeholder for updating and handling various states - implement these based on your needs
 async function updateTotalVolumeTraded(erc721Address, salePrice) {
     await CollectionStat.findOneAndUpdate(
         { address: erc721Address },
@@ -226,12 +53,241 @@ async function updateFloorPrice(erc721Address) {
     }
 }
 
+async function handleTokenListed(event) {
+    // Assuming event is the entire event object and contains a structure as per the event definition
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+    const listing = event.args.listing; // This is where the nested structure comes into play
+
+    // Now extract details from the listing object
+    const seller = listing.seller;
+    const price = listing.value;
+    const expireTimestamp = listing.expireTimestamp;
+
+    // With the correct values extracted, you can proceed as before
+    const newListing = new Listing({
+        erc721Address: erc721Address,
+        tokenId: tokenId.toString(),
+        seller: seller,
+        price: price,
+        expireTimestamp: expireTimestamp,
+        listedTimestamp: Date.now(), // Assuming you want to record when this event was processed
+        status: 'Active',
+    });
+
+    try {
+        // Save the new listing to the database
+        await newListing.save();
+        console.log(`New listing saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+
+        // // update the floor price
+        // await updateFloorPrice(erc721Address);
+    } catch (error) {
+        console.error(`Error handling TokenListed for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
+    }
+}
+
+
+async function handleTokenDelisted(event) {
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+
+    // Proceed to delete the listing
+    const result = await Listing.deleteOne({
+        tokenId: tokenId.toString(),
+        erc721Address: erc721Address,
+    });
+
+    if (result.deletedCount > 0) {
+        console.log(`Listing removed for tokenId ${tokenId.toString()} at address ${erc721Address}.`);
+    } else {
+        console.log(`No listing found to remove for TokenDelisted event for tokenId ${tokenId.toString()} at address ${erc721Address}.`);
+    }
+}
+
+
+
+async function handleTokenBought(event) {
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+    const buyer = event.args.buyer;
+    const listing = event.args.listing;
+    const seller = listing.seller;
+    const price = listing.value;
+    const serviceFee = event.args.serviceFee;
+    const royaltyFee = event.args.royaltyFee;
+    const transactionHash = event.transactionHash;
+
+    // proceed to record the sale
+    const newSale = new Sale({
+        erc721Address: erc721Address,
+        tokenId: tokenId.toString(),
+        buyer: buyer,
+        seller: seller,
+        price: price,
+        serviceFee: serviceFee,
+        royaltyFee: royaltyFee,
+        timestamp: Date.now(),
+        status: 'Sold',
+        txid: transactionHash,
+    });
+
+    try {
+        await newSale.save();
+        console.log(`New sale saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+
+        // remove the bought nft
+        await Listing.findOneAndDelete({
+            tokenId: tokenId.toString(),
+            erc721Address: erc721Address,
+        });
+
+        // Update total volume traded and floor price for the collection
+        await updateTotalVolumeTraded(erc721Address, price);
+        await updateFloorPrice(erc721Address);
+    } catch (error) {
+        console.error(`Error handling TokenBought for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
+    }
+}
+
+
+async function handleTokenBidEntered(event) {
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+    const bid = event.args.bid;
+    const bidder = bid.bidder;
+    const bidValue = bid.value;
+    const expireTimestamp = bid.expireTimestamp;
+
+    // proceed to record the bid
+    const newBid = new Bid({
+        erc721Address: erc721Address,
+        tokenId: tokenId.toString(),
+        bidder: bidder,
+        value: bidValue,
+        expireTimestamp: expireTimestamp,
+        status: 'Active',
+    });
+
+    try {
+        await newBid.save();
+        console.log(`New bid saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+    } catch (error) {
+        console.error(`Error handling TokenBidEntered for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
+    }
+}
+
+
+async function handleTokenBidWithdrawn(event) {
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+    const bid = event.args.bid;
+    const bidder = bid.bidder;
+
+    // Proceed to delete the bid
+    const result = await Bid.deleteOne({
+        tokenId: tokenId.toString(),
+        bidder: bidder,
+        erc721Address: erc721Address,
+    });
+
+    if (result.deletedCount > 0) {
+        console.log(`Bid removed for tokenId ${tokenId.toString()} at address ${erc721Address}.`);
+    } else {
+        console.log(`No bid found to remove for tokenId ${tokenId.toString()} at address ${erc721Address}.`);
+    }
+}
+
+
+async function handleTokenBidAccepted(event) {
+    const erc721Address = event.args.erc721Address;
+    const tokenId = event.args.tokenId;
+    const seller = event.args.seller;
+    const bid = event.args.bid;
+    const bidder = bid.bidder;
+    const bidValue = bid.value;
+    const serviceFee = event.args.serviceFee;
+    const royaltyFee = event.args.royaltyFee;
+    const transactionHash = event.transactionHash;
+
+    await Bid.findOneAndDelete({
+        tokenId: tokenId.toString(),
+        bidder: bidder,
+        erc721Address: erc721Address,
+    });
+
+    await Listing.findOneAndDelete({
+        tokenId: tokenId.toString(),
+        erc721Address: erc721Address,
+    });
+
+    // Record the sale
+    const newSale = new Sale({
+        erc721Address: erc721Address,
+        tokenId: tokenId.toString(),
+        buyer: bidder,
+        seller: seller,
+        price: bidValue,
+        serviceFee: serviceFee,
+        royaltyFee: royaltyFee,
+        timestamp: Date.now(),
+        status: 'Sold',
+        txid: transactionHash,
+    });
+
+    try {
+        await newSale.save();
+        console.log(`New sale saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+
+        // Update the total volume traded in WETH and the floor price for the collection
+        await updateTotalVolumeTradedWETH(erc721Address, bidValue);
+        await updateFloorPrice(erc721Address);
+    } catch (error) {
+        console.error(`Error handling TokenBidAccepted for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
+    }
+}
+
+
+async function fetchAndProcessEvents(contract, provider) {
+    let latestProcessedBlock = await provider.getBlockNumber() - 1;
+
+    async function pollForEvents() {
+        const currentBlock = await provider.getBlockNumber();
+        if (currentBlock > latestProcessedBlock) {
+            for (let i = latestProcessedBlock + 1; i <= currentBlock; i++) {
+                const events = await contract.queryFilter({}, i, i);
+                for (let event of events) {
+                    switch (event.event) {
+                        case 'TokenListed':
+                            await handleTokenListed(event);
+                            break;
+                        case 'TokenDelisted':
+                            await handleTokenDelisted(event);
+                            break;
+                        case 'TokenBought':
+                            await handleTokenBought(event);
+                            break;
+                        case 'TokenBidEntered':
+                            await handleTokenBidEntered(event);
+                            break;
+                        case 'TokenBidWithdrawn':
+                            await handleTokenBidWithdrawn(event);
+                            break;
+                        case 'TokenBidAccepted':
+                            await handleTokenBidAccepted(event);
+                            break;
+                        // more cases
+                    }
+                }
+            }
+            latestProcessedBlock = currentBlock;
+        }
+        setTimeout(pollForEvents, 1700);
+    }
+
+    pollForEvents();
+}
 
 module.exports = {
-    setupTokenListedListener,
-    setupTokenDelistedListener,
-    setupTokenBoughtListener,
-    setupTokenBidEnteredListener,
-    setupTokenBidWithdrawnListener,
-    setupTokenBidAcceptedListener,
+    initEventPolling: fetchAndProcessEvents,
 };
