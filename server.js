@@ -1,5 +1,6 @@
 require('dotenv').config();
 const cors = require('cors');
+const cron = require('node-cron');
 const express = require('express');
 const mongoose = require('mongoose');
 const { ethers } = require('ethers');
@@ -30,6 +31,26 @@ const marketplaceContract = new ethers.Contract(
     provider
 );
 
+//remove expired listings
+async function removeExpiredListings() {
+    const now = new Date();
+    try {
+        const result = await Listing.deleteMany({
+            expireTimestamp: { $lte: now.getTime() }
+        });
+        console.log(`Expired listings removed: ${result.deletedCount}`);
+    } catch (error) {
+        console.error('Error removing expired listings:', error);
+    }
+}
+
+// Scheduling the job to run once every day at 00:01 (1 minute past midnight)
+cron.schedule('1 0 * * *', () => {
+    console.log('Running a daily check for expired listings at ' + new Date().toString());
+    removeExpiredListings();
+});
+
+
 app.get('/', (req, res) => {
     res.send('Marketplace V2 Monitor Running');
 });
@@ -42,20 +63,31 @@ app.get('/api/collection-stats/:erc721Address', async (req, res) => {
         const erc721Address = req.params.erc721Address;
         const collectionStat = await CollectionStat.findOne({ address: erc721Address });
 
+        // send default values if no data is found
         if (!collectionStat) {
-            return res.status(404).send({ message: "Collection statistics not found for the provided address." });
-        }
+            res.json({
+                floorPrice: "0",
+                totalVolumeTraded: "0",
+                totalVolumeTradedWETH: "0"
+            });
+        } else {
+            // converting Decimal128 fields to strings
+            const totalVolumeTraded = collectionStat.totalVolumeTraded ? collectionStat.totalVolumeTraded.toString() : "0";
+            const totalVolumeTradedWETH = collectionStat.totalVolumeTradedWETH ? collectionStat.totalVolumeTradedWETH.toString() : "0";
+            const floorPrice = collectionStat.floorPrice ? collectionStat.floorPrice.toString() : "0";
 
-        res.json({
-            floorPrice: collectionStat.floorPrice,
-            totalVolumeTraded: collectionStat.totalVolumeTraded,
-            totalVolumeTradedWETH: collectionStat.totalVolumeTradedWETH
-        });
+            res.json({
+                floorPrice: floorPrice,
+                totalVolumeTraded: totalVolumeTraded,
+                totalVolumeTradedWETH: totalVolumeTradedWETH
+            });
+        }
     } catch (error) {
         console.error('Error fetching collection stats:', error);
         res.status(500).send({ message: "An internal server error occurred. Please try again later." });
     }
 });
+
 
 // --SALES SECTION
 
@@ -90,16 +122,32 @@ app.get('/api/nfts/:erc721Address/:tokenId/sales', async (req, res) => {
             tokenId: tokenId
         }).sort({ timestamp: -1 });
 
-        if (!sales.length) {
-            return res.status(404).send({ message: "No sales found for the specified NFT." });
-        }
-
+        // Always return the array of sales, even if it is empty
         res.json(sales);
     } catch (error) {
         console.error('Error fetching sales for NFT:', error);
         res.status(500).send({ message: "An internal server error occurred. Please try again later." });
     }
 });
+
+
+// Fetch the last sale for a specific NFT
+app.get('/api/nfts/:erc721Address/:tokenId/last-sale', async (req, res) => {
+    const { erc721Address, tokenId } = req.params;
+
+    try {
+        const lastSale = await Sale.findOne({
+            erc721Address: erc721Address,
+            tokenId: tokenId
+        }).sort({ timestamp: -1 });
+
+        res.json(lastSale);
+    } catch (error) {
+        console.error('Error fetching the last sale for NFT:', error);
+        res.status(500).send({ message: "An internal server error occurred. Please try again later." });
+    }
+});
+
 
 // -- LISTING SECTION ---
 
@@ -109,9 +157,6 @@ app.get('/api/nfts/:erc721Address/:tokenId/sales', async (req, res) => {
 app.get('/api/listings/active', async (req, res) => {
     try {
         const activeListings = await Listing.find({ status: 'Active' }).sort({ 'listedTimestamp': -1 }); // all active listings and sorts them by listedTimestamp descending
-        if (activeListings.length === 0) {
-            return res.status(404).send({ message: "No active listings found." });
-        }
         res.json(activeListings);
     } catch (error) {
         console.error('Error fetching active listings:', error);
@@ -150,10 +195,6 @@ app.get('/api/listings/:erc721Address/:tokenId/active', async (req, res) => {
             status: "Active"
         });
 
-        if (!activeListing) {
-            return res.status(404).send({ message: "Active listing not found for the specified NFT." });
-        }
-
         res.json(activeListing);
     } catch (error) {
         console.error('Error fetching active listing:', error);
@@ -172,10 +213,7 @@ app.get('/api/listings/erc721/:erc721Address', async (req, res) => {
             status: "Active"
         }).sort({ listedTimestamp: -1 }); // sorting by listing timestamp if needed
 
-        if (!activeListings.length) {
-            return res.status(404).send({ message: "No active listings found for this Collection." });
-        }
-
+        // always return the array (which may be empty)
         res.json(activeListings);
     } catch (error) {
         console.error('Error fetching active listings:', error);
@@ -229,16 +267,14 @@ app.get('/api/bids/:erc721Address/:tokenId/active', async (req, res) => {
             status: "Active"
         }).sort({ createdAt: -1 });
 
-        if (!activeBids.length) {
-            return res.status(404).send({ message: "No active bids found for the specified NFT." });
-        }
-
+        // Always return the array of active bids, even if it is empty
         res.json(activeBids);
     } catch (error) {
         console.error('Error fetching active bids for NFT:', error);
         res.status(500).send({ message: "Server error occurred." });
     }
 });
+
 
 
 app.listen(PORT, () => {

@@ -1,25 +1,34 @@
 const { ethers } = require('ethers');
+const { Decimal128 } = require('mongodb'); // Ensure you import Decimal128 from MongoDB
 const Listing = require('./models/Listing');
 const Sale = require('./models/Sale');
 const Bid = require('./models/Bid');
 const CollectionStat = require('./models/CollectionStat')
 
-// Placeholder for updating and handling various states - implement these based on your needs
 async function updateTotalVolumeTraded(erc721Address, salePrice) {
-    await CollectionStat.findOneAndUpdate(
-        { address: erc721Address },
-        { $inc: { totalVolumeTraded: salePrice } },
-        { upsert: true, new: true, setDefaultsOnInsert: true } // ill create if not exists with default values
-    );
+    try {
+        await CollectionStat.findOneAndUpdate(
+            { address: erc721Address },
+            { $inc: { totalVolumeTraded: Decimal128.fromString(salePrice.toString()) } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+    } catch (error) {
+        console.error("Error updating total volume traded:", error);
+    }
 }
 
 async function updateTotalVolumeTradedWETH(erc721Address, bidPrice) {
     // Similar approach for WETH volume
-    await CollectionStat.findOneAndUpdate(
-        { address: erc721Address },
-        { $inc: { totalVolumeTradedWETH: bidPrice } },
-        { upsert: true, new: true, setDefaultsOnInsert: true } // ill create if not exists with default values
-    );
+    try {
+
+        await CollectionStat.findOneAndUpdate(
+            { address: erc721Address },
+            { $inc: { totalVolumeTradedWETH: Decimal128.fromString(bidPrice.toString()) } },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+    } catch (error) {
+        console.error("Error updating total WETH volume traded:", error);
+    }
 }
 
 async function updateFloorPrice(erc721Address) {
@@ -27,16 +36,19 @@ async function updateFloorPrice(erc721Address) {
         // ill try to find the lowest price from active listings for the specific ERC721 address.
         const lowestListing = await Listing.findOne({ erc721Address: erc721Address, status: 'Active' }).sort({ price: 1 });
 
-        let floorPrice = 0; // by Default the floor is  0 if no listings or sales are found.
+        //let floorPrice = 0; // by Default the floor is  0 if no listings or sales are found.
+        let floorPrice = Decimal128.fromString("0");
 
         if (lowestListing) {
             // and if there's an active listing, use its price as the floor price.
-            floorPrice = lowestListing.price;
+            // floorPrice = lowestListing.price;
+            floorPrice = Decimal128.fromString(lowestListing.price.toString());
         } else {
             // If there are no active listings, find the most recent sale for the ERC721 address.
             const lastSale = await Sale.findOne({ erc721Address: erc721Address }).sort({ timestamp: -1 });
             if (lastSale) {
-                floorPrice = lastSale.price; // to the last sale price if available.
+                // floorPrice = lastSale.price; // to the last sale price if available.
+                floorPrice = Decimal128.fromString(lastSale.price.toString());
             }
         }
 
