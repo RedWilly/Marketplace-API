@@ -12,7 +12,7 @@ const {
     setupTokenBidEnteredListener,
     setupTokenBidWithdrawnListener,
     setupTokenBidAcceptedListener
-} = require('./Listeners');
+} = require('./Listeners_old');
 
 const CollectionStat = require('./models/CollectionStat');
 const Listing = require('./models/Listing');

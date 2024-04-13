@@ -81,7 +81,7 @@ async function handleTokenListed(event) {
         console.log(`New listing saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
 
         // // update the floor price
-        // await updateFloorPrice(erc721Address);
+        await updateFloorPrice(erc721Address);
     } catch (error) {
         console.error(`Error handling TokenListed for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
     }
