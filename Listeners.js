@@ -41,7 +41,7 @@ async function updateFloorPrice(erc721Address) {
         }
 
         // Updating the CollectionStat with the new floor price or create it if it doesn't exist in thr db
-        const update = await CollectionStat.findOneAndUpdate(
+        await CollectionStat.findOneAndUpdate(
             { address: erc721Address },
             { $set: { floorPrice: floorPrice } },
             { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -54,33 +54,37 @@ async function updateFloorPrice(erc721Address) {
 }
 
 async function handleTokenListed(event) {
-    // Assuming event is the entire event object and contains a structure as per the event definition
     const erc721Address = event.args.erc721Address;
     const tokenId = event.args.tokenId;
-    const listing = event.args.listing; // This is where the nested structure comes into play
+    const listing = event.args.listing;
 
-    // Now extract details from the listing object
     const seller = listing.seller;
     const price = listing.value;
     const expireTimestamp = listing.expireTimestamp;
 
-    // With the correct values extracted, you can proceed as before
-    const newListing = new Listing({
-        erc721Address: erc721Address,
-        tokenId: tokenId.toString(),
-        seller: seller,
-        price: price,
-        expireTimestamp: expireTimestamp,
-        listedTimestamp: Date.now(), // Assuming you want to record when this event was processed
-        status: 'Active',
-    });
-
     try {
-        // Save the new listing to the database
-        await newListing.save();
-        console.log(`New listing saved for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+        await Listing.findOneAndUpdate(
+            {
+                erc721Address: erc721Address,
+                tokenId: tokenId.toString()
+            },
+            {
+                erc721Address: erc721Address,
+                tokenId: tokenId.toString(),
+                seller: seller,
+                price: price,
+                expireTimestamp: expireTimestamp,
+                listedTimestamp: Date.now(),
+                status: 'Active',
+            },
+            {
+                upsert: true,
+                new: true,
+            }
+        );
 
-        // // update the floor price
+        console.log(`Listing updated for tokenId ${tokenId.toString()} at address ${erc721Address}`);
+
         await updateFloorPrice(erc721Address);
     } catch (error) {
         console.error(`Error handling TokenListed for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
