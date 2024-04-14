@@ -32,17 +32,29 @@ const marketplaceContract = new ethers.Contract(
 );
 
 //remove expired listings
+// async function removeExpiredListings() {
+//     const now = new Date();
+//     try {
+//         const result = await Listing.deleteMany({
+//             expireTimestamp: { $lte: now.getTime() }
+//         });
+//         console.log(`Expired listings removed: ${result.deletedCount}`);
+//     } catch (error) {
+//         console.error('Error removing expired listings:', error);
+//     }
+// }
 async function removeExpiredListings() {
-    const now = new Date();
+    const nowInSeconds = Math.floor(Date.now() / 1000);
     try {
         const result = await Listing.deleteMany({
-            expireTimestamp: { $lte: now.getTime() }
+            expireTimestamp: { $lte: nowInSeconds }
         });
         console.log(`Expired listings removed: ${result.deletedCount}`);
     } catch (error) {
         console.error('Error removing expired listings:', error);
     }
 }
+
 
 // Scheduling the job to run once every day at 00:01 (1 minute past midnight)
 cron.schedule('1 0 * * *', () => {

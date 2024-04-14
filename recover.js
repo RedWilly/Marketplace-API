@@ -105,8 +105,8 @@ async function fetchAndProcessEvents(startBlock, endBlock) {
     console.log(`Finished processing events from block ${startBlock} to ${endBlock}`);
 }
 
-const startBlock = 35714667;
-const endBlock = 35714018;
+const startBlock = 35837332;
+const endBlock = 35837332;
 
 fetchAndProcessEvents(startBlock, endBlock)
     .then(() => console.log('Successfully processed all events in the specified range.'))
