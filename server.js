@@ -184,9 +184,6 @@ app.get('/api/listings/seller/:sellerAddress', async (req, res) => {
 
     try {
         const listings = await Listing.find({ seller: sellerAddress }).sort({ listedTimestamp: -1 }); // Sort by listedTimestamp descending
-        if (listings.length === 0) {
-            return res.status(404).send({ message: "No listings found for this seller." });
-        }
         res.json(listings);
     } catch (error) {
         console.error('Error fetching listings for seller:', error);
@@ -243,9 +240,6 @@ app.get('/api/bids/bidder/:bidderAddress', async (req, res) => {
 
     try {
         const bids = await Bid.find({ bidder: bidderAddress }).sort({ createdAt: -1 });
-        if (bids.length === 0) {
-            return res.status(404).send({ message: "No bids found for this bidder." });
-        }
         res.json(bids);
     } catch (error) {
         console.error('Error fetching bids by bidder:', error);
