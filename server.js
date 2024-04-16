@@ -13,6 +13,8 @@ const Sale = require('./models/Sale')
 const Bid = require('./models/Bid')
 
 const marketplaceABI = require('./ABI/marketplaceABI.json');
+const { getPrice } = require('./Price');
+
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -32,17 +34,6 @@ const marketplaceContract = new ethers.Contract(
 );
 
 //remove expired listings
-// async function removeExpiredListings() {
-//     const now = new Date();
-//     try {
-//         const result = await Listing.deleteMany({
-//             expireTimestamp: { $lte: now.getTime() }
-//         });
-//         console.log(`Expired listings removed: ${result.deletedCount}`);
-//     } catch (error) {
-//         console.error('Error removing expired listings:', error);
-//     }
-// }
 async function removeExpiredListings() {
     const nowInSeconds = Math.floor(Date.now() / 1000);
     try {
@@ -66,6 +57,17 @@ cron.schedule('1 0 * * *', () => {
 app.get('/', (req, res) => {
     res.send('Marketplace V2 Monitor Running');
 });
+
+// -- Get BTT PRICE
+app.get('/api/price', async (req, res) => {
+    try {
+        const price = await getPrice();
+        res.json({ price });
+    } catch (error) {
+        res.status(500).send('Failed to fetch price');
+    }
+});
+
 
 // --FLOORPRICE & TOTAL VOLUME SECTION --
 
