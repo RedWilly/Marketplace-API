@@ -4,6 +4,8 @@ const Listing = require('./models/Listing');
 const Sale = require('./models/Sale');
 const Bid = require('./models/Bid');
 const CollectionStat = require('./models/CollectionStat')
+const MarketStat = require('./models/MarketStat')
+
 
 async function updateTotalVolumeTraded(erc721Address, salePrice) {
     try {
@@ -25,6 +27,32 @@ async function updateTotalVolumeTradedWETH(erc721Address, bidPrice) {
             { address: erc721Address },
             { $inc: { totalVolumeTradedWETH: Decimal128.fromString(bidPrice.toString()) } },
             { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+    } catch (error) {
+        console.error("Error updating total WETH volume traded:", error);
+    }
+}
+
+
+// update overall marketplace total volume traded
+async function updateMarketTotalVolumeTraded(salePrice) {
+    try {
+        await MarketStat.findOneAndUpdate(
+            {},
+            { $inc: { totalVolumeTraded: Decimal128.fromString(salePrice.toString()) } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error("Error updating total market volume traded:", error);
+    }
+}
+
+async function updateMarketTotalVolumeTradedWETH(bidPrice) {
+    try {
+        await MarketStat.findOneAndUpdate(
+            {},
+            { $inc: { totalVolumeTradedWETH: Decimal128.fromString(bidPrice.toString()) } },
+            { upsert: true, new: true }
         );
     } catch (error) {
         console.error("Error updating total WETH volume traded:", error);
@@ -161,6 +189,7 @@ async function handleTokenBought(event) {
         // Update total volume traded and floor price for the collection
         await updateTotalVolumeTraded(erc721Address, price);
         await updateFloorPrice(erc721Address);
+        await updateMarketTotalVolumeTraded(price);
     } catch (error) {
         console.error(`Error handling TokenBought for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);
     }
@@ -257,6 +286,7 @@ async function handleTokenBidAccepted(event) {
 
         // Update the total volume traded in WETH and the floor price for the collection
         await updateTotalVolumeTradedWETH(erc721Address, bidValue);
+        await updateMarketTotalVolumeTradedWETH(bidValue);
         await updateFloorPrice(erc721Address);
     } catch (error) {
         console.error(`Error handling TokenBidAccepted for tokenId ${tokenId.toString()} at address ${erc721Address}:`, error);

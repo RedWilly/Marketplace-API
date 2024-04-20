@@ -11,6 +11,7 @@ const CollectionStat = require('./models/CollectionStat');
 const Listing = require('./models/Listing');
 const Sale = require('./models/Sale')
 const Bid = require('./models/Bid')
+const MarketStat = require('./models/MarketStat')
 
 const marketplaceABI = require('./ABI/marketplaceABI.json');
 const { getPrice } = require('./Price');
@@ -68,6 +69,28 @@ app.get('/api/price', async (req, res) => {
     }
 });
 
+// total volume trade for all
+app.get('/api/market-stats', async (req, res) => {
+    try {
+        const stats = await MarketStat.findOne({});
+        if (!stats) {
+            res.json({
+                totalVolumeTraded: "0",
+                totalVolumeTradedWETH: "0"
+            });
+        } else {
+            res.json({
+                totalVolumeTraded: stats.totalVolumeTraded.toString(),
+                totalVolumeTradedWETH: stats.totalVolumeTradedWETH.toString()
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching market stats:', error);
+        res.status(500).send({ message: "An internal server error occurred. Please try again later." });
+    }
+});
+
+
 
 // --FLOORPRICE & TOTAL VOLUME SECTION --
 
@@ -96,6 +119,28 @@ app.get('/api/collection-stats/:erc721Address', async (req, res) => {
                 totalVolumeTradedWETH: totalVolumeTradedWETH
             });
         }
+    } catch (error) {
+        console.error('Error fetching collection stats:', error);
+        res.status(500).send({ message: "An internal server error occurred. Please try again later." });
+    }
+});
+
+// Fetch all collection statistics
+app.get('/api/collection-stats', async (req, res) => {
+    try {
+        const collectionStats = await CollectionStat.find({});
+        if (!collectionStats.length) {
+            return res.status(404).json({ message: 'No collection statistics found.' });
+        }
+        const formattedStats = collectionStats.map(stat => ({
+            address: stat.address,
+            floorPrice: stat.floorPrice ? stat.floorPrice.toString() : "0",  // Convert Decimal128 to String
+            totalVolumeTraded: stat.totalVolumeTraded ? stat.totalVolumeTraded.toString() : "0",
+            totalVolumeTradedWETH: stat.totalVolumeTradedWETH ? stat.totalVolumeTradedWETH.toString() : "0",  // Handle the field if it exists
+            createdAt: stat.createdAt,
+            updatedAt: stat.updatedAt
+        }));
+        res.json(formattedStats);
     } catch (error) {
         console.error('Error fetching collection stats:', error);
         res.status(500).send({ message: "An internal server error occurred. Please try again later." });
