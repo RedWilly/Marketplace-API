@@ -1,139 +1,418 @@
 ---
 Marketplace API Documentation v1 for Rooni.Art
 ---
+# NFT Marketplace Backend
 
-## Introduction
+This repository contains the backend code for an NFT marketplace. The backend provides API endpoints to interact with the marketplace smart contract and persists data related to listings, sales, bids, and collection statistics.
 
-The Marketplace API Backend provides a set of endpoints to interact with the Marketplace smart contract and retrieve market data. The API is built using Node.js, Express, and MongoDB, and it interacts with the blockchain using Ethers.js.
+## Table of Contents
 
-## Setup
+- [Features](#features)
+- [Installation](#installation)
+- [API Documentation](#api-documentation)
+  - [Market Statistics](#market-statistics)
+  - [Collection Statistics](#collection-statistics)
+  - [Sales](#sales)
+  - [Listings](#listings)
+  - [Bids](#bids)
+  - [Price](#price)
+- [Event Listeners](#event-listeners)
+- [Data Models](#data-models)
+- [Cron Jobs](#cron-jobs)
 
-### Prerequisites
+## Features
 
-Before you can run the API, you need to have the following installed on your system:
+- Tracks active listings, sales, and bids on the NFT marketplace.
+- Calculates and updates floor prices and total volume traded for collections.
+- Provides API endpoints to fetch marketplace data.
+- Listens to events from the smart contract and updates the database accordingly.
+- Removes expired listings periodically using cron jobs.
 
-- Node.js (version 14 or above)
-- MongoDB
-- Infura Project ID
+## Installation
 
-### Environment Variables
+1. **Clone the repository:**
 
-The API uses environment variables for configuration. You need to set the following variables in a `.env` file in the root directory of the project:
+   ```bash
+   git clone https://github.com/RedWilly/Marketplace-API.git
+   ```
+
+2. **Install dependencies:**
+
+   ```bash
+   cd Marketplace-api
+   npm install
+   ```
+
+3. **Configure environment variables:**
+
+   Create a `.env` file in the root directory and set the following environment variables:
+
+   ```
+   MONGODB_URI=<your_mongodb_uri>
+   INFURA_PROJECT_ID=<your_rpc_url>
+   MARKETPLACE_CONTRACT_ADDRESS=<your_marketplace_contract_address>
+   PORT=3002
+   ```
+
+4. **Start the server:**
+
+   ```bash
+   npm start
+   ```
+
+## API Documentation
+
+The API follows a RESTful design and uses JSON for communication. The base URL for the API is `http://localhost:3002/api`.
+
+### Market Statistics
+
+#### Get Overall Marketplace Statistics
 
 ```
-MONGODB_URI=<Your MongoDB URI>
-INFURA_PROJECT_ID=<Your RPC url>
-MARKETPLACE_CONTRACT_ADDRESS=<The address of the Marketplace smart contract>
-```
-
-### Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/RedWilly/Marketplace-API.git
-cd Marketplace-api
-```
-
-2. Install the dependencies:
-
-```bash
-npm install
-```
-
-3. Start the API:
-
-```bash
-npm start
-```
-
-The API will start running on port 3002 by default.
-
-## API Endpoints
-
-The following endpoints are available in the Marketplace API:
-
-### Market Stats
-
-- `GET /api/market-stats`: Retrieves the total volume traded and total volume traded in WETH for the entire marketplace.
-
-### Collection Stats
-
-- `GET /api/collection-stats/:erc721Address`: Retrieves the floor price, total volume traded, and total volume traded in WETH for a specific ERC721 collection.
-- `GET /api/collection-stats`: Retrieves the collection stats for all collections.
-
-### Sales
-
-- `GET /api/nfts/sold`: Retrieves the most recently sold NFTs on the marketplace.
-- `GET /api/nfts/:erc721Address/:tokenId/sales`: Retrieves the sales history for a specific NFT.
-- `GET /api/nfts/:erc721Address/:tokenId/last-sale`: Retrieves the last sale for a specific NFT.
-
-### Listings
-
-- `GET /api/listings/active`: Retrieves all active listings.
-- `GET /api/listings/seller/:sellerAddress`: Retrieves all listings by a specific seller.
-- `GET /api/listings/:erc721Address/:tokenId/active`: Retrieves the active listing for a specific NFT.
-- `GET /api/listings/erc721/:erc721Address`: Retrieves all active listings for a specific ERC721 collection.
-
-### Bids
-
-- `GET /api/bids/bidder/:bidderAddress`: Retrieves all bids by a specific bidder.
-- `GET /api/bids/active`: Retrieves all active bids.
-- `GET /api/bids/:erc721Address/:tokenId/active`: Retrieves all active bids for a specific NFT.
-
-### Price
-
-- `GET /api/price`: Retrieves the current price of BTT in USD.
-
-## Usage Examples
-
-### Fetching Market Stats
-
-To fetch the total volume traded and total volume traded in WETH for the entire marketplace, you can use the following endpoint:
-
-```http
 GET /api/market-stats
 ```
 
-### Fetching Collection Stats
+**Responses**
 
-To fetch the floor price, total volume traded, and total volume traded in WETH for a specific ERC721 collection, you can use the following endpoint:
+- **200 OK**
 
-```http
-GET /api/collection-stats/0xYourERC721Address
+```json
+{
+    "totalVolumeTraded": "1000000000000000000000",
+    "totalVolumeTradedWETH": "5000000000000000000"
+}
 ```
 
-### Fetching Sales
+### Collection Statistics
 
-To fetch the most recently sold NFTs on the marketplace, you can use the following endpoint:
+#### Get Statistics for All Collections
 
-```http
+```
+GET /api/collection-stats
+```
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+  {
+    "address": "0x123...abc",
+    "floorPrice": "1000000000000000000",
+    "totalVolumeTraded": "1000000000000000000000",
+    "totalVolumeTradedWETH": "5000000000000000000",
+    "createdAt": "2023-12-20T12:00:00.000Z",
+    "updatedAt": "2023-12-20T13:00:00.000Z"
+  },
+  // ... more collections
+]
+```
+
+#### Get Statistics for a Specific Collection
+
+```
+GET /api/collection-stats/:erc721Address
+```
+
+**Parameters**
+
+- **erc721Address** (string, required): The address of the ERC721 contract.
+
+**Responses**
+
+- **200 OK**
+
+```json
+{
+  "floorPrice": "1000000000000000000",
+  "totalVolumeTraded": "1000000000000000000000",
+  "totalVolumeTradedWETH": "5000000000000000000"
+}
+```
+
+### Sales
+
+#### Get Recent Sales
+
+```
 GET /api/nfts/sold
 ```
 
-### Fetching Listings
+**Responses**
 
-To fetch all active listings for a specific ERC721 collection, you can use the following endpoint:
+- **200 OK**
 
-```http
-GET /api/listings/erc721/0xYourERC721Address
+```json
+[
+    {
+        "_id": "64e05f8e45f4e219e963a32f",
+        "erc721Address": "0x123...abc",
+        "tokenId": "1",
+        "buyer": "0xdef...xyz",
+        "seller": "0xabc...123",
+        "price": "1000000000000000000",
+        "serviceFee": "50000000000000000",
+        "royaltyFee": "100000000000000000",
+        "timestamp": "1700836206263",
+        "status": "Sold",
+        "txid": "0x7b8...9a28",
+        "createdAt": "2023-12-24T12:30:06.264Z",
+        "updatedAt": "2023-12-24T12:30:06.264Z",
+        "__v": 0
+    },
+    // more sale records
+]
 ```
 
-### Fetching Bids
+#### Get Sales History for a Specific NFT
 
-To fetch all active bids for a specific NFT, you can use the following endpoint:
-
-```http
-GET /api/bids/0xYourERC721Address/YourTokenId/active
+```
+GET /api/nfts/:erc721Address/:tokenId/sales
 ```
 
-### Fetching Current BTT Price
+**Parameters**
 
-To fetch the current price of BTT in USD, you can use the following endpoint:
+- **erc721Address** (string, required): The address of the ERC721 contract.
+- **tokenId** (string, required): The token ID of the NFT.
 
-```http
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    // similar to recent sales, but filtered for the given NFT
+]
+```
+
+#### Get the Last Sale Record for a Specific NFT
+
+```
+GET /api/nfts/:erc721Address/:tokenId/last-sale
+```
+
+**Parameters**
+
+- **erc721Address** (string, required): The address of the ERC721 contract.
+- **tokenId** (string, required): The token ID of the NFT.
+
+**Responses**
+
+- **200 OK**
+
+```json
+{
+    // a single sale record, representing the last time this NFT was sold
+}
+```
+
+
+### Listings
+
+#### Get All Active Listings
+
+```
+GET /api/listings/active
+```
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    {
+        "_id": "64e061d345f4e219e963a331",
+        "erc721Address": "0x123...abc",
+        "tokenId": "2",
+        "seller": "0xdef...xyz",
+        "price": "1500000000000000000",
+        "expireTimestamp": 1701100262,
+        "listedTimestamp": 1700836467457,
+        "status": "Active",
+        "createdAt": "2023-12-24T12:41:07.458Z",
+        "updatedAt": "2023-12-24T12:41:07.458Z",
+        "__v": 0
+    },
+    // more active listings
+]
+```
+
+#### Get Active Listings for a Specific Collection
+
+```
+GET /api/listings/erc721/:erc721Address
+```
+
+**Parameters**
+
+- **erc721Address** (string, required): The address of the ERC721 contract.
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    // Similar to all active listings, but filtered for the specific collection
+]
+```
+
+#### Get Active Listing for a Specific NFT
+
+```
+GET /api/listings/:erc721Address/:tokenId/active
+```
+
+**Parameters**
+
+- **erc721Address** (string, required): The address of the ERC721 contract.
+- **tokenId** (string, required): The token ID of the NFT.
+
+**Responses**
+
+- **200 OK**
+
+```json
+{
+    // The active listing for the given NFT, if any
+}
+```
+
+#### Get Listings by Seller Address
+
+```
+GET /api/listings/seller/:sellerAddress
+```
+
+**Parameters**
+
+- **sellerAddress** (string, required): The address of the seller.
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    // Listings (both active and inactive) for the given seller
+]
+```
+
+### Bids
+
+#### Get Active Bids
+
+```
+GET /api/bids/active
+```
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    {
+        "_id": "64e0633945f4e219e963a333",
+        "erc721Address": "0x123...abc",
+        "tokenId": "2",
+        "bidder": "0x456...def",
+        "value": "1200000000000000000",
+        "expireTimestamp": 1701100482,
+        "status": "Active",
+        "createdAt": "2023-12-24T12:48:09.098Z",
+        "updatedAt": "2023-12-24T12:48:09.098Z",
+        "__v": 0
+    },
+    // more active bids
+]
+```
+
+#### Get Active Bids for a Specific NFT
+
+```
+GET /api/bids/:erc721Address/:tokenId/active
+```
+
+**Parameters**
+
+- **erc721Address** (string, required): The address of the ERC721 contract.
+- **tokenId** (string, required): The token ID of the NFT.
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    // Active bids for the given NFT
+]
+```
+
+#### Get Bids by Bidder Address
+
+```
+GET /api/bids/bidder/:bidderAddress
+```
+
+**Parameters**
+
+- **bidderAddress** (string, required): The address of the bidder.
+
+**Responses**
+
+- **200 OK**
+
+```json
+[
+    // All bids (active and inactive) made by the given bidder
+]
+```
+
+### Price
+
+#### Get BTT Price
+
+```
 GET /api/price
 ```
+
+**Responses**
+
+- **200 OK**
+
+```json
+{
+    "price": "0.0025" 
+}
+```
+
+
+## Event Listeners
+
+The backend uses event listeners to keep the database in sync with the marketplace smart contract. It listens to the following events:
+
+- **TokenListed:** When a new NFT is listed for sale.
+- **TokenDelisted:** When a listed NFT is removed from sale.
+- **TokenBought:** When a listed NFT is bought.
+- **TokenBidEntered:** When a new bid is placed on an NFT.
+- **TokenBidWithdrawn:** When a bid is withdrawn.
+- **TokenBidAccepted:** When a bid is accepted.
+
+## Data Models
+
+- **Listing:** Represents an NFT listed for sale.
+- **Sale:** Represents a completed sale of an NFT.
+- **Bid:** Represents a bid placed on an NFT.
+- **CollectionStat:** Stores aggregate statistics for each ERC721 collection (floor price, total volume traded).
+- **MarketStat:** Stores aggregate statistics for the entire marketplace (total volume traded).
+
+## Cron Jobs
+
+- **removeExpiredListings:** Runs daily at 00:01 to remove listings that have passed their expiration timestamp.
+
 
 ## Error Handling
 
@@ -143,15 +422,21 @@ The API returns standard HTTP status codes to indicate the success or failure of
 - `404 Not Found`: The requested resource could not be found.
 - `500 Internal Server Error`: An error occurred on the server.
 
+### Technologies Used
+
+- Node.js
+- Express.js
+- MongoDB
+- Ethers.js
+- Node-Cron 
+- Axios
+- Dotenv
+
 ## Contributing
 
-If you'd like to contribute to the Marketplace API, please follow these steps:
+Feel free to fork the project and submit pull requests. All contributions are welcome.
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Make your changes and commit them with clear messages.
-4. Push your branch to your forked repository.
-5. Submit a pull request to the main repository.
+
 
 ### Smart Contract 
 ```bash
