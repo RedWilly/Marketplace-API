@@ -16,5 +16,9 @@ COPY . .
 # Expose the port the app runs on
 EXPOSE 9003
 
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:9003/health || exit 1
+
 # Command to run the application
-CMD ["node", "src/index.js"]
+CMD ["node", "server.js"]
