@@ -3,7 +3,7 @@ services:
   app:
     build: .
     ports:
-      - "9003:9003"
+      - "9005:9005"
     environment:
       - NODE_ENV=production
     depends_on:
